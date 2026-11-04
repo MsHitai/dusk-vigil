@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e0b14">
+<title>Dusk Vigil</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="world"></canvas>
+
+  <!-- Title -->
+  <section id="screen-title" class="screen active">
+    <div class="title-inner">
+      <h1 class="logo"><span>Dusk</span>Vigil</h1>
+      <p class="tagline">Survive fifteen minutes of night.</p>
+      <div class="menu">
+        <button class="btn big" id="btn-play">Play</button>
+        <button class="btn" id="btn-shop">Power-ups <small id="title-gold"></small></button>
+        <button class="btn" id="btn-collection">Collection</button>
+        <button class="btn" id="btn-howto">How to play</button>
+      </div>
+      <div class="sound-row">
+        <button class="btn small toggle" id="btn-music-t">Music</button>
+        <button class="btn small toggle" id="btn-sfx-t">Sound</button>
+        <button class="btn small toggle" id="btn-nums-t">Numbers</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hero select -->
+  <section id="screen-select" class="screen panelscreen">
+    <div class="sheet">
+      <div class="sheet-head">
+        <button class="btn small" data-back>&lsaquo; Back</button>
+        <h2>Choose a hero</h2>
+      </div>
+      <div id="hero-list" class="hero-list"></div>
+      <div id="hero-detail" class="panel hero-detail"></div>
+      <div id="hard-row" class="hard-row hidden">
+        <button class="chip" id="btn-hard"></button>
+      </div>
+      <button class="btn big" id="btn-start">Begin the vigil</button>
+    </div>
+  </section>
+
+  <!-- Power-up shop -->
+  <section id="screen-shop" class="screen panelscreen">
+    <div class="sheet">
+      <div class="sheet-head">
+        <button class="btn small" data-back>&lsaquo; Back</button>
+        <h2>Power-ups</h2>
+        <div class="goldbox"><span class="coin"></span><span id="shop-gold">0</span></div>
+      </div>
+      <p class="dim">Permanent bonuses for every hero. Gold comes from runs, even short ones.</p>
+      <div id="shop-list" class="shop-list"></div>
+      <button class="btn small" id="btn-refund">Refund all</button>
+    </div>
+  </section>
+
+  <!-- Collection -->
+  <section id="screen-collection" class="screen panelscreen">
+    <div class="sheet">
+      <div class="sheet-head">
+        <button class="btn small" data-back>&lsaquo; Back</button>
+        <h2>Collection</h2>
+      </div>
+      <div id="collection" class="collection"></div>
+    </div>
+  </section>
+
+  <!-- In-game HUD -->
+  <section id="screen-game" class="screen hud-screen">
+    <div id="hud-top">
+      <div class="xpbar"><i id="xp-fill"></i><b id="lvl">LV 1</b></div>
+      <div class="hud-row">
+        <div class="slots">
+          <div id="slot-w" class="slotrow"></div>
+          <div id="slot-p" class="slotrow"></div>
+        </div>
+        <div id="timer">00:00</div>
+        <div class="hud-right">
+          <button class="btn icon" id="btn-pause" aria-label="Pause">II</button>
+          <div class="stat"><span class="skull"></span><span id="kills">0</span></div>
+          <div class="stat"><span class="coin"></span><span id="gold">0</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="banner"></div>
+    <div id="bossbar" class="hidden"><span id="boss-name"></span><div class="bb"><i id="boss-fill"></i></div></div>
+  </section>
+
+  <div id="modal" class="hidden">
+    <div id="modal-box" class="panel"></div>
+  </div>
+  <div id="toast"></div>
+</div>
+
+<script src="data.js"></script>
+<script src="game.js"></script>
+<script src="sprites.js"></script>
+<script src="audio.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

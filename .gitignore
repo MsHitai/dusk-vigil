@@ -1,0 +1,14 @@
+# Build output (attach APKs to GitHub Releases instead)
+build/
+*.apk
+*.idsig
+
+# Signing keys
+*.keystore
+*.jks
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
