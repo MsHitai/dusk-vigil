@@ -3,7 +3,7 @@
 (function (root) {
   'use strict';
   const D = (typeof module !== 'undefined' && module.exports) ? require('./data.js') : root.DV_DATA;
-  const { WEAPONS, PASSIVES, ENEMIES, WAVES, EVENTS, CHARS, BASE_STATS, SHOP, WEAPON_ORDER, PASSIVE_ORDER, RUN_SECONDS } = D;
+  const { WEAPONS, PASSIVES, ENEMIES, MAPS, CHARS, BASE_STATS, SHOP, WEAPON_ORDER, PASSIVE_ORDER, RUN_SECONDS } = D;
 
   const MAX_ENEMIES = 320;
   const MAX_GEMS = 300;
@@ -51,6 +51,8 @@
       this.rng = makeRng(opts.seed || (Date.now() & 0xffffffff));
       this.charId = opts.char || 'knight';
       this.hard = !!opts.hard;
+      this.mapId = MAPS[opts.map] ? opts.map : 'forest';
+      this.map = MAPS[this.mapId];
       this.viewW = opts.viewW || 270;
       this.viewH = opts.viewH || 560;
       this.time = 0;
@@ -204,10 +206,10 @@
       const def = ENEMIES[type];
       const minute = this.time / 60;
       const late = Math.max(0, minute - 7);
-      const hpMul = (def.boss ? 1 : 1 + minute * 0.07 + late * late * 0.025) * (this.hard ? 1.6 : 1);
+      const hpMul = (def.boss ? 1 : (1 + minute * 0.07 + late * late * 0.025) * this.map.hp) * (this.hard ? 1.6 : 1);
       const e = {
         id: this.nextId++, type, def, sprite: def.sprite, x, y,
-        hp: def.hp * hpMul, maxHp: def.hp * hpMul, spd: def.spd * (this.hard ? 1.1 : 1) * (0.92 + this.rng() * 0.16),
+        hp: def.hp * hpMul, maxHp: def.hp * hpMul, spd: def.spd * (this.hard ? 1.1 : 1) * (def.boss ? 1 : this.map.spd) * (0.92 + this.rng() * 0.16),
         dmg: def.dmg * (this.hard ? 1.3 : 1), r: def.r, xp: def.xp, kx: 0, ky: 0, flash: 0, atkCd: 0,
         hitT: {}, slowT: 0, scale: 1, boss: !!def.boss, elite: false, prop: false, swarm: null, ai: def.ai ? { t: 2, phase: 0 } : null,
         wob: this.rng() * 6.28, vx: 0,
@@ -231,9 +233,12 @@
       if (ev.kind === 'boss') {
         const pt = this.edgePoint(30);
         const e = this.spawn(ev.type, pt.x, pt.y);
+        if (ev.hp) e.hp = e.maxHp = ev.hp * (this.hard ? 1.6 : 1);
+        e.name = ev.name || e.def.name;
+        e.final = !!ev.final;
         this.boss = e;
-        this.emit({ t: 'boss', name: e.def.name, final: !!e.def.final });
-        if (e.def.final) this.finalPhase = true;
+        this.emit({ t: 'boss', name: e.name, final: e.final });
+        if (e.final) this.finalPhase = true;
       } else if (ev.kind === 'elite') {
         const pt = this.edgePoint(20);
         this.spawn(ev.type, pt.x, pt.y, { elite: true });
@@ -261,9 +266,10 @@
     }
 
     spawner(dt) {
-      while (this.eventIdx < EVENTS.length && this.time >= EVENTS[this.eventIdx].t) this.runEvent(EVENTS[this.eventIdx++]);
-      const minute = Math.min(WAVES.length - 1, Math.floor(this.time / 60));
-      const wave = WAVES[minute];
+      const events = this.map.events, waves = this.map.waves;
+      while (this.eventIdx < events.length && this.time >= events[this.eventIdx].t) this.runEvent(events[this.eventIdx++]);
+      const minute = Math.min(waves.length - 1, Math.floor(this.time / 60));
+      const wave = waves[minute];
       this.spawnT -= dt;
       if (this.spawnT <= 0) {
         this.spawnT += wave.every;
@@ -336,6 +342,19 @@
           ring(enraged ? 12 : 8, 70);
         } else summon(enraged ? 12 : 8);
         ai.t = enraged ? 2.6 : 3.4;
+      } else if (kind === 'dragon') {
+        const step = ai.phase++ % 3;
+        if (step === 0 || (enraged && step === 2)) {
+          // Fire breath: a fan of embers aimed at the player.
+          const base = Math.atan2(dy, dx), n = enraged ? 11 : 8;
+          for (let i = 0; i < n; i++) {
+            const a = base + (i / (n - 1) - 0.5) * 1.0;
+            this.projectiles.push({ kind: 'ebullet', fire: true, x: e.x, y: e.y, vx: Math.cos(a) * 88, vy: Math.sin(a) * 88, r: 4, life: 6, dmg: e.dmg * 0.55, enemy: true });
+          }
+          this.sfx('fire');
+        } else if (step === 1) { ai.wind = 0.7; this.sfx('roar'); }
+        else summon(enraged ? 8 : 5);
+        ai.t = enraged ? 2.2 : 2.9;
       } else if (kind === 'king') {
         const step = ai.phase++ % 4;
         if (step === 0) { ai.wind = 0.55; this.sfx('roar'); }
@@ -463,7 +482,7 @@
         this.flags.boss1 = true;
         this.boss = null;
         this.sfx('bossdown');
-        if (e.def.final) {
+        if (e.final) {
           this.state = 'won';
           this.emit({ t: 'end', won: true });
           return;
@@ -791,7 +810,7 @@
       k.taken = true;
       if (k === this.overflowGem) this.overflowGem = null;
       if (k.kind === 'gem') { this.gainXp(k.v); this.sfx('gem'); }
-      else if (k.kind === 'coin') { this.gold += k.v * this.stats.greed * (this.hard ? 1.5 : 1); this.sfx('coin'); }
+      else if (k.kind === 'coin') { this.gold += k.v * this.stats.greed * this.map.gold * (this.hard ? 1.5 : 1); this.sfx('coin'); }
       else if (k.kind === 'food') { this.heal(30); this.sfx('heal'); this.emit({ t: 'heal' }); }
       else if (k.kind === 'magnet') { for (const g of this.pickups) if (g.kind === 'gem') g.vac = true; this.sfx('magnet'); }
       else if (k.kind === 'bell') this.bell(false);
@@ -975,7 +994,7 @@
     // Snapshot for the results screen.
     summary() {
       const rows = this.weapons.map((w) => ({ id: w.id, lvl: w.lvl, dmg: Math.round(this.dmgBy[w.id] || 0) }));
-      return { time: this.time, kills: this.kills, level: this.level, gold: Math.floor(this.gold), weapons: rows, passives: this.passives.slice(), won: this.state === 'won', char: this.charId, hard: this.hard, flags: this.flags };
+      return { time: this.time, kills: this.kills, level: this.level, gold: Math.floor(this.gold), weapons: rows, passives: this.passives.slice(), won: this.state === 'won', char: this.charId, map: this.mapId, hard: this.hard, flags: this.flags };
     }
   }
 

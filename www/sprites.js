@@ -1235,10 +1235,47 @@
     return c;
   }
 
+  // Props cut from the Enter the Fluffy sprite sheet (props.png): [x, width, height] on one row.
+  const PROPS = { p_barrel: [0, 18, 21], p_crate: [19, 18, 19], p_pillar: [38, 18, 30], p_debris: [57, 9, 6], p_column: [67, 16, 39],
+    p_urn: [84, 14, 22], p_rock: [99, 15, 33], p_drum_fire: [115, 16, 27], p_boulder: [132, 28, 18], p_crystal: [161, 14, 33],
+    p_pedestal: [176, 26, 23], p_lamp: [203, 10, 39] };
+
+  // Recolours a sprite towards `color` (keeps its shading), for stage-specific moods.
+  function tint(src, color, amount) {
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const g = c.getContext('2d');
+    g.drawImage(src, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = amount;
+    g.fillStyle = color;
+    g.fillRect(0, 0, c.width, c.height);
+    return c;
+  }
+
   const SPR = {};
   root.Sprites = {
-    init() { for (const k in DEFS) SPR[k] = build(DEFS[k]); },
+    init() {
+      for (const k in DEFS) SPR[k] = build(DEFS[k]);
+      const img = new Image();
+      img.onload = () => {
+        for (const k in PROPS) {
+          const [x, w, h] = PROPS[k];
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, x, 0, w, h, 0, 0, w, h);
+          SPR[k] = c;
+        }
+      };
+      img.src = 'props.png';
+    },
     get(name) { return SPR[name]; },
+    // A tinted copy of a sprite, cached by name. Returns undefined until the source is loaded.
+    tinted(name, color, amount) {
+      const key = name + color + amount;
+      if (!SPR[key] && SPR[name]) SPR[key] = tint(SPR[name], color, amount);
+      return SPR[key];
+    },
     has(name) { return !!DEFS[name]; },
     // A sprite scaled up into its own canvas, handy for menus.
     portrait(name, scale) {

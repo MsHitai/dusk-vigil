@@ -7,6 +7,7 @@ const { Game } = require(path.join(__dirname, '../www/game.js'));
 
 const runs = +process.argv[2] || 20;
 const charArg = process.argv[3] || 'all';
+const mapArg = process.env.MAP || 'forest';
 const shopArg = process.argv[4] || '0';
 const hard = process.argv[5] === 'hard';
 const shop = {};
@@ -73,7 +74,7 @@ const all = [];
 for (const ch of chars) {
   const res = [];
   for (let r = 0; r < runs; r++) {
-    const g = new Game({ char: ch, shop, hard, seed: 1000 + r * 7919, viewW: 270, viewH: 560 });
+    const g = new Game({ char: ch, map: mapArg, shop, hard, seed: 1000 + r * 7919, viewW: 270, viewH: 560 });
     const dt = 1 / 30;
     let evoAt = [];
     while ((g.state === 'play' || g.state === 'levelup' || g.state === 'chest') && g.time < 1100) {

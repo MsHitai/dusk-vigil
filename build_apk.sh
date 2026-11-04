@@ -10,13 +10,13 @@ OUT=build
 APK=DuskVigil.apk
 
 rm -rf "$OUT" && mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex" "$OUT/assets/www"
-cp www/*.html www/*.css www/*.js "$OUT/assets/www/"
+cp www/*.html www/*.css www/*.js www/*.png "$OUT/assets/www/"
 python3 tools/make_icon.py
 
 "$BT/aapt2" compile --dir android/res -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$JAR" \
   --manifest android/AndroidManifest.xml -A "$OUT/assets" --java "$OUT/gen" \
-  --min-sdk-version 24 --target-sdk-version 34 --version-code 1 --version-name 1.0.0 \
+  --min-sdk-version 24 --target-sdk-version 34 --version-code 2 --version-name 1.1.0 \
   "$OUT/res.zip"
 
 javac -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$JAR" -d "$OUT/classes" \
