@@ -8,21 +8,27 @@ no framework, bundler or npm dependencies. Shipped as a web page wrapped in a ti
 
 ## Layout
 - `www/data.js`: all content and numbers: heroes, weapons and their level tables, evolutions, passives, enemies,
-  the per-minute wave plan, timed events (swarms, rings, elites, bosses) and the power-up shop. No DOM.
+  the per-minute wave plans and timed events (swarms, rings, elites, bosses) per stage in `MAPS`, and the shop. No DOM.
 - `www/game.js`: the run simulation (`DV.Game`). No DOM, so it runs in Node. Emits events in `game.out`
   (`sfx`, `num`, `kill`, `boss`, `warn`, `evo`, `flash`, `end`) that `main.js` consumes each frame.
 - `www/main.js`: screens, input (floating joystick + WASD), canvas rendering, menus, save data (`localStorage` key `dv_save`).
-- `www/sprites.js`: pixel art as character grids. Heroes/monsters/bosses come from Escape the Dungeons.
-- `www/audio.js`: WebAudio tracker. Songs are written note by note (`VIGIL`, `BOSS`, `TITLE`); sound effects below.
+- `www/sprites.js`: pixel art as character grids. Heroes/monsters/bosses come from Escape the Dungeons;
+  stage props are cut from Enter the Fluffy's sheet into `www/props.png` (`PROPS` table) and tinted per stage.
+- `www/audio.js`: WebAudio tracker. Songs are written note by note (`VIGIL`, `BOSS`, `TITLE`); `generate()` composes
+  stage music from `MOODS` with a per-run seed (`Sound.music('gen:crypt', seed)`); sound effects below.
 - `android/`, `build_apk.sh`: WebView wrapper and a Gradle-free APK build. `tools/make_icon.py`: launcher icons.
 - `tools/sim.js`: headless balance bot.
 
 ## Checking changes
 - Syntax: `for f in www/*.js tools/*.js; do node --check "$f"; done`
-- Balance: `node tools/sim.js 6 all 0` and `node tools/sim.js 6 all mid`, before and after any number change.
+- Balance: `node tools/sim.js 6 all 0` and `node tools/sim.js 6 all mid` (prefix `MAP=<stage>` for other stages),
+  before and after any number change. At 1.1.0 with half the shop the bot wins about half its Forest runs,
+  a third in Crypt/Depths and fewer in the Keep, which is meant for a well-upgraded hero.
 - Play at phone size (375x812) in the browser. Debug hooks: `__dbg.game()`, `__dbg.save()`, `__dbg.give(gold)`.
 
 ## Rules of thumb
+- New stage: an entry in `MAPS`/`MAP_ORDER` (waves, events, multipliers, music, unlock), a ground painter in
+  `GROUNDS` and a decor list in `DECOR_SETS` (main.js), and a mood in `MOODS` (audio.js) if it composes music.
 - Keep rules in `game.js`/`data.js` and presentation in `main.js`.
 - New weapon: add it to `WEAPONS` + `WEAPON_ORDER` with an `evo`/`with` pair, its evolved entry, a branch in
   `Game.fireWeapon`, an icon in `sprites.js` (evo icon via the `EVO` recolour table), and drawing in `main.js` if it

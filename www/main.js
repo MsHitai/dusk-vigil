@@ -1,7 +1,7 @@
 // Screens, input, rendering and menus. The run itself is simulated in game.js.
 (function () {
   'use strict';
-  const { CHARS, CHAR_ORDER, WEAPONS, WEAPON_ORDER, PASSIVES, PASSIVE_ORDER, SHOP, RUN_SECONDS } = DV_DATA;
+  const { MAPS, MAP_ORDER, CHARS, CHAR_ORDER, WEAPONS, WEAPON_ORDER, PASSIVES, PASSIVE_ORDER, SHOP, RUN_SECONDS } = DV_DATA;
   const { Game, weaponMax, levelText } = DV;
   const $ = (id) => document.getElementById(id);
 
@@ -11,11 +11,13 @@
   const defaults = {
     gold: 0, shop: {}, unlocked: {}, discovered: {}, best: {}, wins: {}, hardWins: {}, hardUnlocked: false,
     runs: 0, totalKills: 0, char: 'knight', hard: false, nums: true, seenHelp: false,
+    map: 'forest', mapUnlocked: {}, bestMap: {}, winsMap: {},
   };
   let save = defaults;
   try { save = Object.assign({}, defaults, JSON.parse(localStorage.getItem('dv_save') || '{}')); } catch (e) { /* fresh */ }
   const persist = () => { try { localStorage.setItem('dv_save', JSON.stringify(save)); } catch (e) { /* ignore */ } };
   const isUnlocked = (id) => !CHARS[id].unlock || save.unlocked[id];
+  const mapUnlocked = (id) => !MAPS[id].unlock || save.mapUnlocked[id];
 
   // ------------------------------------------------------------ helpers
   const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
@@ -40,7 +42,7 @@
   function show(name) {
     screen = name;
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === 'screen-' + name));
-    if (name === 'title') { Sound.music('title'); syncTitle(); }
+    if (name === 'title') { stage = 'forest'; Sound.music('title'); syncTitle(); }
   }
   document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', () => { Sound.sfx('click'); show('title'); }));
 
@@ -68,39 +70,118 @@
   }
   window.addEventListener('resize', resize);
 
-  // Ground tile: dark forest floor with grass tufts, stones and little flowers.
+  // Ground tiles, one per stage, generated once (256px, seamless enough with the speckle noise).
   const TILE = 256;
-  const ground = (() => {
-    const c = document.createElement('canvas');
-    c.width = TILE; c.height = TILE;
-    const x = c.getContext('2d');
-    const rng = DV.makeRng(1234);
-    x.fillStyle = '#222e1e';
-    x.fillRect(0, 0, TILE, TILE);
-    const dots = [['#28361f', 3600], ['#1c2618', 2800], ['#30402a', 900], ['#182016', 800]];
+  function speckle(x, rng, dots) {
     for (const [col, n] of dots) { x.fillStyle = col; for (let i = 0; i < n; i++) x.fillRect(Math.floor(rng() * TILE), Math.floor(rng() * TILE), 1 + (rng() < 0.3 ? 1 : 0), 1); }
-    // Dirt patches
-    for (let i = 0; i < 7; i++) {
-      const cx = rng() * TILE, cy = rng() * TILE, r = 5 + rng() * 14;
-      for (let k = 0; k < r * 12; k++) {
-        const a = rng() * 6.28, d = Math.sqrt(rng()) * r;
-        x.fillStyle = rng() < 0.5 ? '#2a2420' : '#241e1a';
-        x.fillRect(Math.floor((cx + Math.cos(a) * d) % TILE), Math.floor((cy + Math.sin(a) * d * 0.6) % TILE), 1, 1);
+  }
+  const GROUNDS = {
+    // Dark forest floor with grass tufts, dirt and little flowers.
+    forest(x, rng) {
+      x.fillStyle = '#222e1e'; x.fillRect(0, 0, TILE, TILE);
+      speckle(x, rng, [['#28361f', 3600], ['#1c2618', 2800], ['#30402a', 900], ['#182016', 800]]);
+      for (let i = 0; i < 7; i++) {
+        const cx = rng() * TILE, cy = rng() * TILE, r = 5 + rng() * 14;
+        for (let k = 0; k < r * 12; k++) {
+          const a = rng() * 6.28, d = Math.sqrt(rng()) * r;
+          x.fillStyle = rng() < 0.5 ? '#2a2420' : '#241e1a';
+          x.fillRect(Math.floor((cx + Math.cos(a) * d) % TILE), Math.floor((cy + Math.sin(a) * d * 0.6) % TILE), 1, 1);
+        }
       }
+      for (let i = 0; i < 110; i++) {
+        const gx = Math.floor(rng() * TILE), gy = Math.floor(rng() * TILE);
+        x.fillStyle = '#34482c'; x.fillRect(gx, gy, 1, 2); x.fillRect(gx + 2, gy, 1, 2);
+        x.fillStyle = '#2c3e26'; x.fillRect(gx + 1, gy + 1, 1, 2);
+      }
+      for (let i = 0; i < 30; i++) { x.fillStyle = ['#c03040', '#d8d0e8', '#8a6ac8'][i % 3]; x.fillRect(Math.floor(rng() * TILE), Math.floor(rng() * TILE), 1, 1); }
+    },
+    // Worn flagstones in a brick bond, with cracks, moss and puddles.
+    crypt(x, rng) {
+      x.fillStyle = '#121019'; x.fillRect(0, 0, TILE, TILE);
+      const shades = ['#2a2834', '#26242f', '#2e2c38', '#232130', '#29262f'];
+      for (let row = 0; row < TILE / 16; row++) {
+        const off = row % 2 ? 8 : 0;
+        for (let col = -1; col < TILE / 16; col++) {
+          const sx = col * 16 + off, sy = row * 16;
+          x.fillStyle = shades[Math.floor(rng() * shades.length)];
+          x.fillRect(sx + 1, sy + 1, 15, 15);
+          x.fillStyle = 'rgba(255,255,255,0.04)'; x.fillRect(sx + 1, sy + 1, 15, 1);
+          if (rng() < 0.15) { // crack
+            x.fillStyle = '#16141c';
+            let cx = sx + 3 + rng() * 10, cy = sy + 2;
+            for (let k = 0; k < 10; k++) { x.fillRect(Math.floor(cx), Math.floor(cy), 1, 1); cx += rng() * 2 - 1; cy += 1.2; }
+          }
+        }
+      }
+      speckle(x, rng, [['#34323f', 900], ['#1a1822', 900], ['#2a3a34', 160]]);
+      for (let i = 0; i < 4; i++) { // puddles
+        const cx = rng() * TILE, cy = rng() * TILE, rx = 6 + rng() * 10;
+        x.fillStyle = 'rgba(40,60,90,0.35)'; x.beginPath(); x.ellipse(cx, cy, rx, rx * 0.45, 0, 0, 6.29); x.fill();
+        x.fillStyle = 'rgba(160,190,230,0.15)'; x.fillRect(Math.floor(cx - rx / 2), Math.floor(cy - 1), Math.floor(rx / 2), 1);
+      }
+    },
+    // Black basalt split by glowing lava cracks and stray embers.
+    depths(x, rng) {
+      x.fillStyle = '#1c1312'; x.fillRect(0, 0, TILE, TILE);
+      speckle(x, rng, [['#241816', 3200], ['#140d0c', 2600], ['#2e1e1a', 800], ['#3a2420', 200]]);
+      for (let i = 0; i < 9; i++) {
+        let cx = rng() * TILE, cy = rng() * TILE, a = rng() * 6.28;
+        const len = 20 + rng() * 50;
+        for (let k = 0; k < len; k++) {
+          const px = ((Math.floor(cx) % TILE) + TILE) % TILE, py = ((Math.floor(cy) % TILE) + TILE) % TILE;
+          x.fillStyle = 'rgba(160,40,10,0.35)'; x.fillRect(px - 1, py - 1, 3, 3);
+          x.fillStyle = k % 7 === 0 ? '#ffd060' : '#ff6a20'; x.fillRect(px, py, 1, 1);
+          cx += Math.cos(a); cy += Math.sin(a); a += (rng() - 0.5) * 0.8;
+        }
+      }
+      speckle(x, rng, [['#ff8a30', 40], ['#ffd060', 14]]);
+    },
+    // Dark marble checker with a red carpet runner and gold trim.
+    castle(x, rng) {
+      for (let r = 0; r < TILE / 16; r++) {
+        for (let c = 0; c < TILE / 16; c++) {
+          x.fillStyle = (r + c) % 2 ? '#262030' : '#1e1928';
+          x.fillRect(c * 16, r * 16, 16, 16);
+          x.fillStyle = 'rgba(255,255,255,0.03)'; x.fillRect(c * 16, r * 16, 16, 1);
+          if (rng() < 0.3) { // marble vein
+            x.fillStyle = 'rgba(200,180,230,0.07)';
+            let vx = c * 16 + rng() * 16, vy = r * 16;
+            for (let k = 0; k < 16; k++) { x.fillRect(Math.floor(vx), Math.floor(vy), 1, 1); vx += rng() - 0.5; vy += 1; }
+          }
+        }
+      }
+      speckle(x, rng, [['#2c2438', 500], ['#16121e', 500]]);
+      x.fillStyle = '#4a1420'; x.fillRect(104, 0, 48, TILE);
+      x.fillStyle = '#5a1a26';
+      for (let y = 0; y < TILE; y += 4) x.fillRect(108, y, 40, 2);
+      x.fillStyle = '#b88a18'; x.fillRect(104, 0, 2, TILE); x.fillRect(150, 0, 2, TILE);
+      x.fillStyle = '#7a5810'; x.fillRect(107, 0, 1, TILE); x.fillRect(148, 0, 1, TILE);
+    },
+  };
+  const groundCache = {};
+  function groundFor(map) {
+    if (!groundCache[map]) {
+      const c = document.createElement('canvas');
+      c.width = TILE; c.height = TILE;
+      GROUNDS[map](c.getContext('2d'), DV.makeRng(1234));
+      groundCache[map] = c;
     }
-    // Grass tufts
-    for (let i = 0; i < 110; i++) {
-      const gx = Math.floor(rng() * TILE), gy = Math.floor(rng() * TILE);
-      x.fillStyle = '#34482c'; x.fillRect(gx, gy, 1, 2); x.fillRect(gx + 2, gy, 1, 2);
-      x.fillStyle = '#2c3e26'; x.fillRect(gx + 1, gy + 1, 1, 2);
-    }
-    // Flowers
-    for (let i = 0; i < 30; i++) {
-      x.fillStyle = ['#c03040', '#d8d0e8', '#8a6ac8'][i % 3];
-      x.fillRect(Math.floor(rng() * TILE), Math.floor(rng() * TILE), 1, 1);
-    }
-    return c;
-  })();
+    return groundCache[map];
+  }
+
+  // Decor per stage: sprite, chance per 96px cell, whether it is tall (drawn over monsters),
+  // whether it glows, and an optional tint [colour, amount] to sit the shooter props into the night.
+  const DECOR_SETS = {
+    forest: [['tree', 0.16, true], ['deadtree', 0.08, true], ['grave', 0.1], ['bush', 0.21]],
+    crypt: [['p_pillar', 0.1, true, false, ['#2a2040', 0.35]], ['p_column', 0.05, true, false, ['#2a2040', 0.45]], ['p_urn', 0.08, false, false, ['#2a2040', 0.3]],
+      ['grave', 0.08], ['bones', 0.12], ['p_debris', 0.1, false, false, ['#2a2040', 0.3]], ['p_barrel', 0.04, false, false, ['#2a2040', 0.4]],
+      ['p_lamp', 0.03, true, true, ['#2a2040', 0.3]]],
+    depths: [['p_rock', 0.1, true, false, ['#3a1410', 0.55]], ['p_boulder', 0.12, false, false, ['#3a1410', 0.5]], ['p_crystal', 0.07, true, true, ['#ff4020', 0.55]],
+      ['p_drum_fire', 0.05, false, true], ['deadtree', 0.06, true], ['bones', 0.08], ['p_debris', 0.08, false, false, ['#3a1410', 0.5]]],
+    castle: [['p_column', 0.12, true, false, ['#3a2a50', 0.3]], ['p_pedestal', 0.07, false, false, ['#3a2a50', 0.3]], ['p_urn', 0.09, false, false, ['#3a2a50', 0.2]],
+      ['p_lamp', 0.06, true, true, ['#3a2a50', 0.2]], ['p_crate', 0.04, false, false, ['#3a2a50', 0.35]], ['p_debris', 0.06, false, false, ['#3a2a50', 0.35]]],
+  };
+  let stage = 'forest';
 
   // Soft round glows, pre-rendered once.
   function glow(r, inner, outer) {
@@ -116,6 +197,7 @@
     bolt: glow(8, '#ffffff', 'rgba(79,211,255,0.8)'),
     torrent: glow(8, '#ffffff', 'rgba(208,122,255,0.85)'),
     ebullet: glow(7, '#ffd0e0', 'rgba(200,40,80,0.9)'),
+    ember: glow(7, '#fff0b0', 'rgba(255,110,20,0.9)'),
     fire: glow(32, 'rgba(255,230,120,0.75)', 'rgba(255,100,20,0.45)'),
     hell: glow(32, 'rgba(255,200,255,0.75)', 'rgba(150,40,220,0.5)'),
     light: glow(32, 'rgba(255,220,120,0.35)', 'rgba(255,140,40,0.12)'),
@@ -129,24 +211,32 @@
   }
 
   function drawGround(cx, cy, vw, vh) {
+    const tile = groundFor(stage);
     const x0 = Math.floor((cx - vw / 2) / TILE) * TILE, y0 = Math.floor((cy - vh / 2) / TILE) * TILE;
-    for (let x = x0; x < cx + vw / 2; x += TILE) for (let y = y0; y < cy + vh / 2; y += TILE) g.drawImage(ground, x, y);
+    for (let x = x0; x < cx + vw / 2; x += TILE) for (let y = y0; y < cy + vh / 2; y += TILE) g.drawImage(tile, x, y);
   }
   // Decorations live on a 96px grid, picked by a hash so they stay put as you walk.
   const DECOR = 96;
-  function drawDecor(cx, cy, vw, vh, under) {
-    const x0 = Math.floor((cx - vw / 2 - 32) / DECOR), x1 = Math.floor((cx + vw / 2 + 32) / DECOR);
-    const y0 = Math.floor((cy - vh / 2 - 32) / DECOR), y1 = Math.floor((cy + vh / 2 + 48) / DECOR);
+  function drawDecor(cx, cy, vw, vh, under, t) {
+    const set = DECOR_SETS[stage];
+    const x0 = Math.floor((cx - vw / 2 - 48) / DECOR), x1 = Math.floor((cx + vw / 2 + 32) / DECOR);
+    const y0 = Math.floor((cy - vh / 2 - 48) / DECOR), y1 = Math.floor((cy + vh / 2 + 48) / DECOR);
     for (let gx = x0; gx <= x1; gx++) {
       for (let gy = y0; gy <= y1; gy++) {
-        const h = hash(gx, gy);
-        if (h > 0.55) continue;
-        const kind = h < 0.16 ? 'tree' : h < 0.24 ? 'deadtree' : h < 0.34 ? 'grave' : 'bush';
-        const tall = kind === 'tree' || kind === 'deadtree';
-        if (tall === under) continue;
-        const spr = Sprites.get(kind);
-        const px = gx * DECOR + Math.floor(hash(gy, gx) * 70) + 10, py = gy * DECOR + Math.floor(hash(gx + 7, gy) * 70) + 10;
-        if (tall) g.drawImage(GLOW.shadow, px - 4, py + spr.height - 4, 24, 8);
+        let h = hash(gx, gy), d = null;
+        for (const item of set) { if (h < item[1]) { d = item; break; } h -= item[1]; }
+        if (!d) continue;
+        const [name, , tall, lit, tn] = d;
+        if (!!tall === under) continue;
+        const spr = tn ? Sprites.tinted(name, tn[0], tn[1]) : Sprites.get(name);
+        if (!spr) continue;
+        const px = gx * DECOR + Math.floor(hash(gy, gx) * 60) + 10, py = gy * DECOR + Math.floor(hash(gx + 7, gy) * 60) + 10;
+        if (tall) g.drawImage(GLOW.shadow, px - 4, py + spr.height - 4, spr.width + 8, 8);
+        if (lit) {
+          g.globalAlpha = 0.5 + Math.sin((t || 0) * 7 + gx * 3) * 0.12;
+          g.drawImage(GLOW.light, px + spr.width / 2 - 28, py - 10, 56, 56);
+          g.globalAlpha = 1;
+        }
         g.drawImage(spr, px, py);
       }
     }
@@ -203,16 +293,24 @@
   let lastTimer = -1;
   let bannerTimer = null;
 
+  let musicSeed = 1;
+  // The stage's own tune: hand-written for the forest, composed fresh each run for the others.
+  const stageMusic = (boss) => Sound.music(boss ? MAPS[stage].boss : MAPS[stage].music, musicSeed + (boss ? 1 : 0));
+
   function startRun(charId) {
     Sound.init();
-    game = new Game({ char: charId, shop: save.shop, hard: save.hard && save.hardUnlocked, seed: (Math.random() * 1e9) | 0 });
+    if (!mapUnlocked(save.map)) save.map = 'forest';
+    stage = save.map;
+    musicSeed = (Math.random() * 1e9) | 0;
+    game = new Game({ char: charId, map: stage, shop: save.shop, hard: save.hard && save.hardUnlocked, seed: (Math.random() * 1e9) | 0 });
     resize();
     particles = []; nums = []; iconSig = ''; lastTimer = -1; paused = false;
     $('bossbar').classList.add('hidden');
     $('timer').classList.remove('final');
     save.char = charId; persist();
     show('game');
-    Sound.music('vigil');
+    stageMusic(false);
+    banner(MAPS[stage].name);
     if (!save.seenHelp) { save.seenHelp = true; persist(); showHelp(true); }
   }
 
@@ -244,9 +342,9 @@
           break;
         }
         case 'boss':
-          banner(ev.final ? 'The Hollow King awakens' : ev.name + ' approaches', true);
+          banner(ev.final ? ev.name + ' awakens' : ev.name + ' approaches', true);
           Sound.sfx('boss');
-          Sound.music('boss');
+          stageMusic(true);
           if (ev.final) $('timer').classList.add('final');
           break;
         case 'warn': banner(ev.text); Sound.sfx('warn'); break;
@@ -259,7 +357,7 @@
     game.out.length = 0;
     if (game.boss === null && $('bossbar').classList.contains('hidden') === false) {
       $('bossbar').classList.add('hidden');
-      if (game.state === 'play') Sound.music('vigil');
+      if (game.state === 'play') stageMusic(false);
     }
   }
 
@@ -284,7 +382,7 @@
     }
     if (game.boss) {
       $('bossbar').classList.remove('hidden');
-      $('boss-name').textContent = game.boss.def.name;
+      $('boss-name').textContent = game.boss.name;
       $('boss-fill').style.width = Math.max(0, game.boss.hp / game.boss.maxHp * 100).toFixed(1) + '%';
     }
   }
@@ -433,7 +531,13 @@
     save.totalKills += s.kills;
     save.gold += s.gold;
     save.best[s.char] = Math.max(save.best[s.char] || 0, Math.floor(s.time));
+    save.bestMap[s.map] = Math.max(save.bestMap[s.map] || 0, Math.floor(s.time));
+    for (const id of MAP_ORDER) {
+      const u = MAPS[id].unlock;
+      if (u && !save.mapUnlocked[id] && u.map === s.map && s.time >= u.time) { save.mapUnlocked[id] = true; unlocks.push(`New stage: ${MAPS[id].name}!`); }
+    }
     if (won) {
+      save.winsMap[s.map] = (save.winsMap[s.map] || 0) + 1;
       save.wins[s.char] = (save.wins[s.char] || 0) + 1;
       if (s.hard) save.hardWins[s.char] = (save.hardWins[s.char] || 0) + 1;
       if (!save.hardUnlocked) { save.hardUnlocked = true; unlocks.push('Hard mode unlocked: tougher night, 50% more gold.'); }
@@ -449,7 +553,7 @@
     const rows = s.weapons.slice().sort((a, b) => b.dmg - a.dmg).map((w) =>
       `<div class="bw"><span data-icon="${WEAPONS[w.id].icon}" data-s="2"></span><div class="n">${WEAPONS[w.id].name}<small>Level ${w.lvl}</small></div><div class="d">${w.dmg.toLocaleString()}</div></div>`).join('');
     openModal(`<h2 class="${won ? '' : 'bad'}">${won ? 'Dawn breaks!' : 'You fell'}</h2>
-      <p>${won ? 'The Hollow King is no more. You survived the night.' : 'The night claims another. Spend your gold and try again.'}</p>
+      <p>${MAPS[s.map].name}. ${won ? 'Its master is no more: you survived the night.' : 'The night claims another. Spend your gold and try again.'}</p>
       <div class="statgrid">
         <div><b>${fmtTime(s.time)}</b>survived</div><div><b>${s.level}</b>level</div>
         <div><b>${s.kills.toLocaleString()}</b>kills</div><div><b>+${s.gold}</b>gold</div>
@@ -535,6 +639,19 @@
         <div class="bonus">${c.note}</div>
         <div class="best">Best: ${save.best[selChar] ? fmtTime(save.best[selChar]) : '-'} · Wins: ${save.wins[selChar] || 0}</div>`
       : `<h4>Locked</h4><div class="lock">${c.unlock.text} to unlock this hero.</div>`, true);
+    const ml = $('map-list');
+    ml.innerHTML = '';
+    if (!mapUnlocked(save.map)) save.map = 'forest';
+    for (const id of MAP_ORDER) {
+      const m = MAPS[id], open = mapUnlocked(id);
+      const el = document.createElement('button');
+      el.className = 'chip stage' + (id === save.map ? ' sel' : '') + (open ? '' : ' locked');
+      el.innerHTML = open
+        ? `${m.name}${save.winsMap[id] ? ' ★' + save.winsMap[id] : ''}<small>${m.desc}</small><small class="best">Best ${save.bestMap[id] ? fmtTime(save.bestMap[id]) : '-'} · gold ×${m.gold}</small>`
+        : `???<small>${m.unlock.text}</small>`;
+      if (open) el.addEventListener('click', () => { Sound.sfx('click'); save.map = id; persist(); renderSelect(); });
+      ml.appendChild(el);
+    }
     $('btn-start').disabled = !isUnlocked(selChar);
     $('hard-row').classList.toggle('hidden', !save.hardUnlocked);
     $('btn-hard').className = 'chip' + (save.hard ? ' sel' : '');
@@ -581,6 +698,11 @@
   // ------------------------------------------------------------ collection
   function renderCollection() {
     const found = WEAPON_ORDER.filter((id) => save.discovered[WEAPONS[id].evo]).length;
+    let stages = '<h3>Stages</h3>';
+    for (const id of MAP_ORDER) {
+      const m = MAPS[id];
+      stages += `<div class="recipe${mapUnlocked(id) ? '' : ' unknown'}"><span class="nm">${mapUnlocked(id) ? m.name : '???'}<br><span class="dim">${mapUnlocked(id) ? 'Best ' + (save.bestMap[id] ? fmtTime(save.bestMap[id]) : '-') + ' · wins ' + (save.winsMap[id] || 0) : m.unlock.text}</span></span></div>`;
+    }
     let html = `<div class="statgrid">
       <div><b>${save.runs}</b>runs</div><div><b>${save.totalKills.toLocaleString()}</b>kills</div>
       <div><b>${Object.values(save.wins).reduce((a, b) => a + b, 0)}</b>victories</div><div><b>${found}/${WEAPON_ORDER.length}</b>evolutions</div>
@@ -591,6 +713,7 @@
         ? `<div class="recipe"><span data-icon="${d.icon}" data-s="2"></span><span class="op">+</span><span data-icon="${PASSIVES[d.with].icon}" data-s="2"></span><span class="op">=</span><span data-icon="${e.icon}" data-s="2"></span><span class="nm">${e.name}<br><span class="dim">${d.name} + ${PASSIVES[d.with].name}</span></span></div>`
         : `<div class="recipe unknown"><span data-icon="${d.icon}" data-s="2"></span><span class="op">+</span><span class="q">?</span><span class="op">=</span><span class="q">?</span><span class="nm">???<br><span class="dim">${d.name} + an unknown passive</span></span></div>`;
     }
+    html += stages;
     html += '<h3>Weapons</h3><div class="grid-icons">' + WEAPON_ORDER.map((id) => `<div class="ic"><span data-icon="${WEAPONS[id].icon}" data-s="2"></span><br>${WEAPONS[id].name}</div>`).join('') + '</div>';
     html += '<h3>Passives</h3><div class="grid-icons">' + PASSIVE_ORDER.map((id) => `<div class="ic"><span data-icon="${PASSIVES[id].icon}" data-s="2"></span><br>${PASSIVES[id].name}</div>`).join('') + '</div>';
     fill($('collection'), html, true);
@@ -627,7 +750,7 @@
     g.setTransform(S, 0, 0, S, ox, oy);
     g.imageSmoothingEnabled = false;
     drawGround(p.x, p.y, vw, vh);
-    drawDecor(p.x, p.y, vw, vh, false);
+    drawDecor(p.x, p.y, vw, vh, false, performance.now() / 1000);
     const t = performance.now() / 1000;
 
     // Holy aura under everything.
@@ -725,7 +848,7 @@
         const s = b.evo ? 1.3 : 1;
         g.drawImage(b.evo ? GLOW.torrent : GLOW.bolt, b.x - 8 * s, b.y - 8 * s, 16 * s, 16 * s);
       } else if (b.kind === 'ebullet') {
-        g.drawImage(GLOW.ebullet, b.x - 6, b.y - 6, 12, 12);
+        g.drawImage(b.fire ? GLOW.ember : GLOW.ebullet, b.x - 6, b.y - 6, 12, 12);
       } else if (b.kind === 'dagger') {
         rotSpr(b.evo ? 'e_dagger' : 'w_dagger', b.x, b.y, Math.atan2(b.vy, b.vx) + Math.PI / 4, 0.75);
       } else if (b.kind === 'axe') {
@@ -782,7 +905,7 @@
       g.fillRect(Math.round(q.x), Math.round(q.y), 1, 1);
     }
     g.globalAlpha = 1;
-    drawDecor(p.x, p.y, vw, vh, true);
+    drawDecor(p.x, p.y, vw, vh, true, performance.now() / 1000);
 
     // Damage numbers in screen space (crisp text).
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -801,7 +924,7 @@
     }
     // Darkness around the edges.
     const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.65);
-    vg.addColorStop(0, 'rgba(8,4,16,0)'); vg.addColorStop(1, game.finalPhase ? 'rgba(40,0,10,0.75)' : 'rgba(8,4,16,0.7)');
+    vg.addColorStop(0, 'rgba(8,4,16,0)'); vg.addColorStop(1, game.finalPhase ? 'rgba(40,0,10,0.75)' : MAPS[stage].dark ? 'rgba(4,2,10,0.88)' : 'rgba(8,4,16,0.7)');
     g.fillStyle = vg; g.fillRect(0, 0, W, H);
     if (flashT > 0) { g.globalAlpha = flashT * 2; g.fillStyle = '#fff8e0'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
     // Off-screen markers for chests and the boss.
@@ -838,7 +961,7 @@
     g.setTransform(S, 0, 0, S, Math.round(W / 2 - cx * S), Math.round(H / 2 - cy * S));
     g.imageSmoothingEnabled = false;
     drawGround(cx, cy, vw, vh);
-    drawDecor(cx, cy, vw, vh, false);
+    drawDecor(cx, cy, vw, vh, false, titleT);
     if (titleMobs.length < 14 && Math.random() < dt * 3) {
       const types = ['bat', 'skeleton', 'zombie', 'wraith', 'rat', 'slime'];
       titleMobs.push({ s: types[Math.floor(Math.random() * types.length)], x: cx - vw / 2 - 20, y: cy + (Math.random() - 0.5) * vh, v: 20 + Math.random() * 25, w: Math.random() * 6 });
@@ -849,7 +972,7 @@
       if (m.x > cx + vw / 2 + 30) { titleMobs.splice(i, 1); continue; }
       spr(m.s, m.x, m.y + Math.sin(m.w) * 1.5, false);
     }
-    drawDecor(cx, cy, vw, vh, true);
+    drawDecor(cx, cy, vw, vh, true, titleT);
     g.setTransform(1, 0, 0, 1, 0, 0);
     const vg = g.createRadialGradient(W / 2, H * 0.4, Math.min(W, H) * 0.1, W / 2, H / 2, Math.max(W, H) * 0.7);
     vg.addColorStop(0, 'rgba(8,4,16,0.35)'); vg.addColorStop(1, 'rgba(8,4,16,0.9)');
