@@ -144,7 +144,9 @@
     spiderqueen: { sprite: 'spiderqueen', name: 'Spider Queen', hp: 4500, spd: 46, dmg: 22, xp: 120, r: 16, boss: true, ai: 'brood', minion: 'spider' },
     lich: { sprite: 'lich', name: 'The Lich', hp: 8000, spd: 36, dmg: 24, xp: 200, r: 15, boss: true, ai: 'caster', minion: 'skeleton' },
     vampire: { sprite: 'vampire', name: 'Count Nocturne', hp: 13000, spd: 52, dmg: 28, xp: 300, r: 15, boss: true, ai: 'blink', minion: 'bat' },
-    hollowking: { sprite: 'hollowking', name: 'The Hollow King', hp: 70000, spd: 50, dmg: 34, xp: 0, r: 18, boss: true, ai: 'king', minion: 'wraith', final: true },
+    hollowking: { sprite: 'hollowking', name: 'The Hollow King', hp: 70000, spd: 50, dmg: 34, xp: 0, r: 18, boss: true, ai: 'king', minion: 'wraith' },
+    dragon: { sprite: 'dragon', name: 'The Wyrm', hp: 12000, spd: 48, dmg: 30, xp: 300, r: 16, boss: true, ai: 'dragon', minion: 'flame' },
+    demon: { sprite: 'demon', name: 'The Fiend', hp: 9000, spd: 50, dmg: 26, xp: 250, r: 15, boss: true, ai: 'blink', minion: 'imp' },
   };
 
   // Wave plan, one entry per minute: which enemies roam, how many at least, and how fast more arrive.
@@ -188,8 +190,116 @@
     { t: 810, kind: 'swarm', type: 'serpent', n: 40 },
     { t: 840, kind: 'ring', type: 'golem', n: 40 },
     { t: 870, kind: 'elite', type: 'flame' },
-    { t: 900, kind: 'boss', type: 'hollowking' },
+    { t: 900, kind: 'boss', type: 'hollowking', final: true, name: 'The Hollow King' },
   ];
+
+  // ------------------------------------------------------------ stages
+  // Each stage has its own waves, events, bosses and final boss at 15:00, plus a look (ground + props) and music.
+  // hp/spd scale every regular enemy; gold multiplies coins picked up.
+  const W = (types, min, every, batch) => ({ types, min, every, batch });
+  const CRYPT_WAVES = [
+    W(['rat', 'bat'], 14, 1.0, 2), W(['rat', 'skeleton', 'bat'], 30, 0.8, 3), W(['skeleton', 'zombie'], 40, 0.75, 3),
+    W(['skeleton', 'zombie', 'spider'], 48, 0.7, 3), W(['zombie', 'wraith'], 60, 0.6, 4), W(['wraith', 'spider', 'skeleton'], 80, 0.6, 4),
+    W(['cultist', 'wraith'], 90, 0.55, 4), W(['cultist', 'zombie', 'wraith'], 105, 0.5, 5), W(['cultist', 'spider', 'skeleton'], 120, 0.5, 5),
+    W(['cultist', 'ogre'], 135, 0.45, 5), W(['ogre', 'wraith', 'cultist'], 150, 0.45, 6), W(['golem', 'cultist'], 165, 0.4, 6),
+    W(['golem', 'wraith', 'skeleton'], 180, 0.4, 6), W(['golem', 'ogre', 'cultist'], 195, 0.35, 7), W(['golem', 'serpent', 'wraith', 'ogre'], 210, 0.3, 7),
+    W(['skeleton'], 0, 2.0, 3),
+  ];
+  const CRYPT_EVENTS = [
+    { t: 60, kind: 'swarm', type: 'bat', n: 30 },
+    { t: 120, kind: 'elite', type: 'skeleton' },
+    { t: 180, kind: 'boss', type: 'lich', name: 'The Gravekeeper', hp: 1200 },
+    { t: 240, kind: 'ring', type: 'skeleton', n: 40 },
+    { t: 270, kind: 'elite', type: 'zombie' },
+    { t: 330, kind: 'swarm', type: 'spider', n: 36 },
+    { t: 360, kind: 'boss', type: 'spiderqueen', name: 'Mother of Webs' },
+    { t: 420, kind: 'elite', type: 'wraith' },
+    { t: 450, kind: 'ring', type: 'zombie', n: 44 },
+    { t: 510, kind: 'swarm', type: 'wraith', n: 30 },
+    { t: 540, kind: 'boss', type: 'minotaur', name: 'Bone Minotaur', hp: 8000 },
+    { t: 600, kind: 'elite', type: 'cultist' },
+    { t: 640, kind: 'ring', type: 'cultist', n: 44 },
+    { t: 690, kind: 'swarm', type: 'bat', n: 60 },
+    { t: 720, kind: 'boss', type: 'vampire', name: 'The Crypt Lord' },
+    { t: 780, kind: 'elite', type: 'golem' },
+    { t: 820, kind: 'ring', type: 'golem', n: 36 },
+    { t: 870, kind: 'elite', type: 'ogre' },
+    { t: 900, kind: 'boss', type: 'lich', final: true, name: 'The Bone Pope', hp: 80000 },
+  ];
+  const DEPTHS_WAVES = [
+    W(['bat', 'slime'], 14, 1.0, 2), W(['slime', 'rat', 'bat'], 30, 0.8, 3), W(['goblin', 'slime'], 40, 0.75, 3),
+    W(['goblin', 'slime'], 44, 0.75, 3), W(['goblin', 'imp', 'slime'], 55, 0.65, 4), W(['imp', 'flame'], 75, 0.6, 4),
+    W(['imp', 'flame', 'hound'], 88, 0.55, 4), W(['flame', 'serpent'], 100, 0.5, 5), W(['serpent', 'imp', 'hound'], 120, 0.5, 5),
+    W(['ogre', 'flame'], 135, 0.45, 5), W(['golem', 'flame', 'imp'], 150, 0.45, 6), W(['golem', 'serpent'], 165, 0.4, 6),
+    W(['ogre', 'golem', 'flame'], 180, 0.4, 6), W(['golem', 'serpent', 'hound'], 195, 0.35, 7), W(['golem', 'serpent', 'flame', 'ogre'], 210, 0.3, 7),
+    W(['flame'], 0, 2.0, 3),
+  ];
+  const DEPTHS_EVENTS = [
+    { t: 70, kind: 'swarm', type: 'bat', n: 30 },
+    { t: 120, kind: 'elite', type: 'slime' },
+    { t: 180, kind: 'boss', type: 'minotaur', name: 'The Magma Bull', hp: 1100 },
+    { t: 240, kind: 'ring', type: 'goblin', n: 36 },
+    { t: 280, kind: 'elite', type: 'imp' },
+    { t: 330, kind: 'swarm', type: 'imp', n: 34 },
+    { t: 360, kind: 'boss', type: 'demon', name: 'The Pit Fiend', hp: 5000 },
+    { t: 430, kind: 'elite', type: 'flame' },
+    { t: 470, kind: 'ring', type: 'flame', n: 40 },
+    { t: 520, kind: 'swarm', type: 'serpent', n: 34 },
+    { t: 540, kind: 'boss', type: 'spiderqueen', name: 'The Cinder Queen', hp: 9000 },
+    { t: 600, kind: 'elite', type: 'ogre' },
+    { t: 650, kind: 'ring', type: 'hound', n: 44 },
+    { t: 690, kind: 'swarm', type: 'imp', n: 44 },
+    { t: 720, kind: 'boss', type: 'demon', name: 'The Archfiend', hp: 15000 },
+    { t: 790, kind: 'elite', type: 'golem' },
+    { t: 820, kind: 'swarm', type: 'hound', n: 50 },
+    { t: 850, kind: 'ring', type: 'golem', n: 40 },
+    { t: 900, kind: 'boss', type: 'dragon', final: true, name: 'The Ashen Wyrm', hp: 85000 },
+  ];
+  const CASTLE_WAVES = [
+    W(['bat', 'skeleton'], 14, 1.0, 2), W(['skeleton', 'goblin', 'bat'], 30, 0.8, 3), W(['skeleton', 'zombie', 'goblin'], 40, 0.75, 3),
+    W(['skeleton', 'zombie', 'bat'], 46, 0.75, 3), W(['wraith', 'skeleton', 'cultist'], 58, 0.65, 4), W(['imp', 'wraith', 'cultist'], 80, 0.6, 4),
+    W(['imp', 'cultist'], 88, 0.55, 4), W(['ogre', 'wraith'], 100, 0.5, 5), W(['ogre', 'imp', 'hound'], 120, 0.5, 5),
+    W(['golem', 'cultist'], 135, 0.45, 5), W(['golem', 'flame', 'wraith'], 150, 0.45, 6), W(['serpent', 'ogre', 'hound'], 165, 0.4, 6),
+    W(['golem', 'serpent', 'flame'], 180, 0.4, 6), W(['golem', 'ogre', 'serpent', 'cultist'], 195, 0.35, 7), W(['golem', 'serpent', 'flame', 'ogre'], 215, 0.3, 7),
+    W(['wraith'], 0, 2.0, 3),
+  ];
+  const CASTLE_EVENTS = [
+    { t: 60, kind: 'swarm', type: 'bat', n: 34 },
+    { t: 110, kind: 'elite', type: 'skeleton' },
+    { t: 180, kind: 'boss', type: 'vampire', name: 'The Castellan', hp: 1500 },
+    { t: 230, kind: 'ring', type: 'skeleton', n: 44 },
+    { t: 270, kind: 'elite', type: 'cultist' },
+    { t: 320, kind: 'swarm', type: 'bat', n: 50 },
+    { t: 360, kind: 'boss', type: 'lich', name: 'The Court Mage', hp: 5000 },
+    { t: 420, kind: 'elite', type: 'ogre' },
+    { t: 460, kind: 'ring', type: 'cultist', n: 44 },
+    { t: 500, kind: 'swarm', type: 'hound', n: 40 },
+    { t: 540, kind: 'boss', type: 'demon', name: 'The Gatekeeper', hp: 9000 },
+    { t: 600, kind: 'elite', type: 'golem' },
+    { t: 640, kind: 'ring', type: 'wraith', n: 44 },
+    { t: 690, kind: 'swarm', type: 'imp', n: 44 },
+    { t: 720, kind: 'boss', type: 'dragon', name: 'Wyrm of the Keep', hp: 14000 },
+    { t: 780, kind: 'elite', type: 'flame' },
+    { t: 810, kind: 'swarm', type: 'serpent', n: 44 },
+    { t: 840, kind: 'ring', type: 'golem', n: 40 },
+    { t: 870, kind: 'elite', type: 'golem' },
+    { t: 900, kind: 'boss', type: 'hollowking', final: true, name: 'The Hollow King', hp: 100000 },
+  ];
+
+  const MAPS = {
+    forest: { name: 'Moonlit Forest', desc: 'Where every vigil begins. Bats, the dead and worse.', waves: WAVES, events: EVENTS,
+      hp: 1, spd: 1, gold: 1, music: 'vigil', boss: 'boss' },
+    crypt: { name: 'Sunken Crypt', desc: 'Damp halls of bone and candle. Darker, and the dead hit harder.', waves: CRYPT_WAVES, events: CRYPT_EVENTS,
+      hp: 1.15, spd: 1, gold: 1.25, music: 'gen:crypt', boss: 'gen:crypt-boss', dark: true,
+      unlock: { map: 'forest', time: 600, text: 'Survive 10 minutes in the Moonlit Forest' } },
+    depths: { name: 'Ember Depths', desc: 'Rivers of fire under the world. Faster, fiercer demons.', waves: DEPTHS_WAVES, events: DEPTHS_EVENTS,
+      hp: 1.2, spd: 1.03, gold: 1.5, music: 'gen:depths', boss: 'gen:depths-boss',
+      unlock: { map: 'crypt', time: 600, text: 'Survive 10 minutes in the Sunken Crypt' } },
+    castle: { name: 'Hollow Keep', desc: "The King's own halls. The longest night of all.", waves: CASTLE_WAVES, events: CASTLE_EVENTS,
+      hp: 1.35, spd: 1.05, gold: 1.8, music: 'gen:castle', boss: 'gen:castle-boss',
+      unlock: { map: 'depths', time: 600, text: 'Survive 10 minutes in the Ember Depths' } },
+  };
+  const MAP_ORDER = ['forest', 'crypt', 'depths', 'castle'];
 
   // Permanent upgrades bought with gold between runs. cost = base * (level + 1).
   const SHOP = [
@@ -213,7 +323,7 @@
     magnet: 1, luck: 1, growth: 1, greed: 1, revives: 0, rerolls: 0,
   };
 
-  const DATA = { RUN_SECONDS, CHARS, CHAR_ORDER, WEAPONS, WEAPON_ORDER, PASSIVES, PASSIVE_ORDER, ENEMIES, WAVES, EVENTS, SHOP, BASE_STATS };
+  const DATA = { RUN_SECONDS, MAPS, MAP_ORDER, CHARS, CHAR_ORDER, WEAPONS, WEAPON_ORDER, PASSIVES, PASSIVE_ORDER, ENEMIES, WAVES, EVENTS, SHOP, BASE_STATS };
   if (typeof module !== 'undefined' && module.exports) module.exports = DATA;
   else root.DV_DATA = DATA;
 })(this);

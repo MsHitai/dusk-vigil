@@ -60,8 +60,100 @@
 
   const SONGS = { vigil: VIGIL, boss: BOSS, title: TITLE };
 
+  // ------------------------------------------------------------- composer
+  // The later stages get music written at runtime: a fresh tune for every run, in the stage's mood.
+  // It builds the same song structure as the hand-written ones above, so the same tracker plays it.
+  const MOODS = {
+    crypt: { root: 40, scale: [0, 1, 3, 5, 7, 8, 10], bpm: [120, 132], bass: 'octave', arp: true, pad: true, drums: 'beat', echo: true,
+      progs: [[0, 1, 0, 6, 0, 1, 5, 4], [0, 5, 3, 1, 0, 6, 5, 1], [0, 3, 1, 0, 5, 6, 1, 0], [0, 6, 5, 6, 0, 1, 3, 1]] },
+    depths: { root: 37, scale: [0, 2, 3, 5, 7, 8, 11], bpm: [154, 166], bass: 'gallop', arp: true, drums: 'drive',
+      progs: [[0, 5, 3, 4, 0, 5, 1, 4], [0, 0, 5, 4, 0, 3, 4, 4], [0, 6, 5, 4, 0, 6, 1, 4], [5, 3, 0, 4, 5, 1, 4, 4]] },
+    castle: { root: 35, scale: [0, 2, 3, 5, 7, 8, 11], bpm: [138, 148], bass: 'gallop', arp: true, pad: true, drums: 'beat', echo: true,
+      progs: [[0, 5, 2, 4, 0, 3, 6, 4], [0, 6, 5, 4, 3, 5, 4, 4], [0, 3, 5, 4, 0, 5, 1, 4], [5, 4, 3, 4, 0, 3, 1, 4]] },
+  };
+  // Eighth-note rhythms for one bar (1 = a note starts).
+  const RHYTHMS = [[1, 0, 1, 1, 1, 0, 1, 0], [1, 1, 1, 0, 1, 0, 1, 1], [1, 0, 0, 1, 1, 0, 1, 0], [1, 0, 1, 0, 1, 1, 1, 0],
+    [1, 1, 0, 1, 1, 1, 0, 0], [1, 0, 1, 1, 0, 1, 1, 0], [1, 1, 1, 1, 1, 0, 0, 0]];
+
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+
+  function generate(name, seed) {
+    const boss = name.endsWith('-boss');
+    const m = MOODS[name.replace('-boss', '')];
+    const rng = makeRng(seed);
+    const pick = (a) => a[Math.floor(rng() * a.length)];
+    const sc = m.scale;
+    const pitch = (i) => sc[((i % 7) + 7) % 7] + 12 * Math.floor(i / 7);
+    // A chord on scale degree d: [bass root midi, intervals of its triad].
+    const chord = (d) => {
+      let r = m.root + pitch(d);
+      while (r > 45) r -= 12;
+      return [r, [0, pitch(d + 2) - pitch(d), pitch(d + 4) - pitch(d)]];
+    };
+    const mel = (i) => m.root + 24 + pitch(i);
+    // Melody: chord tones on the beats, steps in between, phrases of A A' B A'' ending on the tonic.
+    function line(prog, lo, hi) {
+      const out = [];
+      let cur = lo + 4 + Math.floor(rng() * 3);
+      const rA = pick(RHYTHMS), rB = pick(RHYTHMS);
+      const bar = (rh, d, end) => {
+        const notes = [];
+        const tones = [d, d + 2, d + 4, d + 7, d + 9, d + 11, d - 3, d - 5];
+        for (let s = 0; s < 8; s++) {
+          if (!rh[s]) { notes.push(null); continue; }
+          if (s % 4 === 0) cur = tones.reduce((b, t) => (Math.abs(t - cur) < Math.abs(b - cur) ? t : b), tones[0]);
+          else cur += pick([-1, -1, 1, 1, 2, -2, 1]);
+          cur = Math.max(lo, Math.min(hi, cur));
+          notes.push(cur);
+        }
+        if (end) { notes.fill(null, 4); notes[4] = cur >= lo + 5 ? lo + 7 : lo; }
+        return notes;
+      };
+      prog.forEach((d, b) => {
+        const phrase = b % 4;
+        out.push(bar(phrase === 2 ? rB : rA, d, phrase === 3));
+      });
+      // Tokens in sixteenths: each eighth note lasts until the next note (up to a half bar).
+      const toks = [];
+      out.forEach((notes) => {
+        for (let s = 0; s < 8; s++) {
+          if (notes[s] == null) { if (s === 0 || toks.length === 0) toks.push('r:2'); continue; }
+          let len = 1;
+          while (s + len < 8 && notes[s + len] == null && len < 4) len++;
+          // A quick sixteenth pickup now and then for a bit of drive.
+          if (len === 1 && rng() < 0.25) toks.push('m' + mel(notes[s]) + ':1', 'm' + mel(notes[s] + 1) + ':1');
+          else toks.push('m' + mel(notes[s]) + ':' + len * 2);
+          s += len - 1;
+        }
+        toks.push('|');
+      });
+      return toks.join(' ');
+    }
+    const p1 = pick(m.progs);
+    let p2 = pick(m.progs);
+    if (p2 === p1) p2 = m.progs[(m.progs.indexOf(p1) + 1) % m.progs.length];
+    const bpmBase = m.bpm[0] + Math.floor(rng() * (m.bpm[1] - m.bpm[0]));
+    const drums = boss ? 'drive' : m.drums;
+    const sec = (prog, lo, hi) => ({ chords: prog.map(chord), bass: boss ? 'gallop' : m.bass, arp: m.arp, pad: m.pad && !boss, drums, lead: line(prog, lo, hi) });
+    return {
+      bpm: boss ? Math.round(bpmBase * 1.14) : bpmBase,
+      sections: {
+        A: sec(p1, 1, 10),
+        B: sec(p2, 4, 12),
+        C: { chords: p1.slice(0, 4).map(chord), bass: 'octave', arpLead: true, drums: 'drive' },
+      },
+      order: boss ? ['A', 'B', 'A*', 'C'] : (m.echo ? ['A', 'A*', 'B', 'C', 'A*', 'B'] : ['A', 'B', 'A', 'C', 'B']),
+      loopFrom: 0,
+      leadWave: name.startsWith('crypt') && !boss ? 'pulse12' : 'pulse25',
+    };
+  }
+
   const NOTE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   function parseNote(t) {
+    if (t[0] === 'm') return +t.slice(1);
     const m = /^([A-G])([#b]?)(-?\d)$/.exec(t);
     if (!m) return null;
     return 12 * (+m[3] + 1) + NOTE[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
@@ -80,7 +172,7 @@
       for (let i = 0; i < total; i++) steps.push([]);
       const at = (s, ev) => { if (s >= base && s < base + total) steps[s].push(ev); };
       sec.chords.forEach((cn, bar) => {
-        const [rootN, tones] = CHORDS[cn];
+        const [rootN, tones] = Array.isArray(cn) ? cn : CHORDS[cn];
         const b0 = base + bar * 16;
         // Bass
         if (sec.bass === 'gallop') {
@@ -185,7 +277,7 @@
     waves.pulse25 = pulseWave(0.25);
     waves.pulse12 = pulseWave(0.125);
     waves.pulse50 = pulseWave(0.5);
-    if (current) { const c = current; current = null; play(c); }
+    if (current) { const c = current.split('#'); current = null; play(c[0], +c[1] || 1); }
   }
 
   const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -251,15 +343,23 @@
   }
 
   const compiled = {};
-  function play(name) {
-    if (current === name && timer) return;
+  // name: a hand-written song ('vigil', 'boss', 'title') or 'gen:<mood>' composed from `seed`.
+  function play(name, seed) {
+    const key = name.startsWith('gen:') ? name + '#' + (seed || 1) : name;
+    if (current === key && timer) return;
     stop();
-    current = name;
-    if (!ctx || !SONGS[name]) return;
-    const song = compiled[name] || (compiled[name] = compile(SONGS[name]));
+    current = key;
+    if (!ctx) return;
+    let song = compiled[key];
+    if (!song) {
+      if (name.startsWith('gen:')) song = compile(generate(name.slice(4), seed || 1));
+      else if (SONGS[name]) song = compile(SONGS[name]);
+      else return;
+      compiled[key] = song;
+    }
     const sixteenth = 60 / song.bpm / 4;
     let step = 0, next = ctx.currentTime + 0.08;
-    const token = name;
+    const token = key;
     timer = setInterval(() => {
       if (current !== token) return;
       while (next < ctx.currentTime + 0.25) {
